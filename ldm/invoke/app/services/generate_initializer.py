@@ -9,6 +9,8 @@ from ...globals import Globals
 from ....generate import Generate
 import ldm.invoke
 
+
+# TODO: most of this code should be split into individual services as the Generate.py code is deprecated
 def get_generate(args, config) -> Generate:
     if not args.conf:
         config_file = os.path.join(Globals.root,'configs','models.yaml')

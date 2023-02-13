@@ -30,6 +30,27 @@ def test_sqlite_service_can_delete():
     db.delete('1')
     assert db.get('1') is None
 
+def test_sqlite_service_calls_set_callback():
+    db = SqliteItemStorage[TestModel](sqlite_memory, 'test', 'id')
+    called = False
+    def on_changed(item: TestModel):
+        nonlocal called
+        called = True
+    db.on_changed(on_changed)
+    db.set(TestModel(id = '1', name = 'Test'))
+    assert called
+
+def test_sqlite_service_calls_delete_callback():
+    db = SqliteItemStorage[TestModel](sqlite_memory, 'test', 'id')
+    called = False
+    def on_deleted(item_id: str):
+        nonlocal called
+        called = True
+    db.on_deleted(on_deleted)
+    db.set(TestModel(id = '1', name = 'Test'))
+    db.delete('1')
+    assert called
+
 def test_sqlite_service_can_list_with_pagination():
     db = SqliteItemStorage[TestModel](sqlite_memory, 'test', 'id')
     db.set(TestModel(id = '1', name = 'Test'))

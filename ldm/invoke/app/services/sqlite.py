@@ -15,6 +15,8 @@ class SqliteItemStorage(ItemStorageABC, Generic[T]):
     _id_field: str
 
     def __init__(self, filename: str, table_name: str, id_field: str = 'id'):
+        super().__init__()
+
         self._filename = filename
         self._table_name = table_name
         self._id_field = id_field # TODO: validate that T has this field
@@ -36,6 +38,7 @@ class SqliteItemStorage(ItemStorageABC, Generic[T]):
 
     def set(self, item: T):
         self._cursor.execute(f'''INSERT OR REPLACE INTO {self._table_name} (item) VALUES (?);''', (item.json(),))
+        self._on_changed(item)
 
     def get(self, id: str) -> Union[T, None]:
         self._cursor.execute(f'''SELECT item FROM {self._table_name} WHERE id = ?;''', (id,))
@@ -47,6 +50,7 @@ class SqliteItemStorage(ItemStorageABC, Generic[T]):
 
     def delete(self, id: str):
         self._cursor.execute(f'''DELETE FROM {self._table_name} WHERE id = ?;''', (id,))
+        self._on_deleted(id)
 
     def list(self, page: int = 0, per_page: int = 10) -> PaginatedResults[T]:
         self._cursor.execute(f'''SELECT item FROM {self._table_name} LIMIT ? OFFSET ?;''', (per_page, page * per_page))
