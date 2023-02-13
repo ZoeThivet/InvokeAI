@@ -18,9 +18,9 @@ class UpscaleInvocation(BaseInvocation):
     strength: float               = Field(default=0.75, gt=0, le=1, description="The strength")
     level: Literal[2,4]           = Field(default=2, description = "The upscale level")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
-        image = services.images.get(self.image.image_type, self.image.image_name)
-        results = services.generate.upscale_and_reconstruct(
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.services.images.get(self.image.image_type, self.image.image_name)
+        results = context.services.generate.upscale_and_reconstruct(
             image_list     = [[image, 0]],
             upscale        = (self.level, self.strength),
             strength       = 0.0, # GFPGAN strength
@@ -31,8 +31,8 @@ class UpscaleInvocation(BaseInvocation):
         # Results are image and seed, unwrap for now
         # TODO: can this return multiple results?
         image_type = ImageType.RESULT
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, results[0][0])
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, results[0][0])
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )
@@ -70,9 +70,9 @@ Finally, note that for all linking, the `type` of the linked fields must match. 
 
 ### Invoke Function
 ```py
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
-        image = services.images.get(self.image.image_type, self.image.image_name)
-        results = services.generate.upscale_and_reconstruct(
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.services.images.get(self.image.image_type, self.image.image_name)
+        results = context.services.generate.upscale_and_reconstruct(
             image_list     = [[image, 0]],
             upscale        = (self.level, self.strength),
             strength       = 0.0, # GFPGAN strength
@@ -82,13 +82,13 @@ Finally, note that for all linking, the `type` of the linked fields must match. 
 
         # Results are image and seed, unwrap for now
         image_type = ImageType.RESULT
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, results[0][0])
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, results[0][0])
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )
 ```
-The `invoke` function is the last portion of an invocation. It is provided an `InvocationServices` which contains services to perform work as well as a `session_id` for use as needed. It should return a class with output values that derives from `BaseInvocationOutput`.
+The `invoke` function is the last portion of an invocation. It is provided an `InvocationContext` which contains services to perform work as well as a `session_id` for use as needed. It should return a class with output values that derives from `BaseInvocationOutput`.
 
 Before being called, the invocation will have all of its fields set from defaults, inputs, and finally links (overriding in that order).
 

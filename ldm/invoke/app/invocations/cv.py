@@ -7,7 +7,7 @@ from pydantic import Field
 from PIL import Image, ImageOps
 import cv2 as cv
 from .image import ImageField, ImageOutput
-from .baseinvocation import BaseInvocation
+from .baseinvocation import BaseInvocation, InvocationContext
 from ..services.image_storage import ImageType
 from ..services.invocation_services import InvocationServices
 
@@ -20,9 +20,9 @@ class CvInpaintInvocation(BaseInvocation):
     image: ImageField = Field(default=None, description="The image to inpaint")
     mask: ImageField = Field(default=None, description="The mask to use when inpainting")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
-        image = services.images.get(self.image.image_type, self.image.image_name)
-        mask = services.images.get(self.mask.image_type, self.mask.image_name)
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = context.services.images.get(self.image.image_type, self.image.image_name)
+        mask = context.services.images.get(self.mask.image_type, self.mask.image_name)
 
         # Convert to cv image/mask
         # TODO: consider making these utility functions
@@ -37,8 +37,8 @@ class CvInpaintInvocation(BaseInvocation):
         image_inpainted = Image.fromarray(cv.cvtColor(cv_inpainted, cv.COLOR_BGR2RGB))
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, image_inpainted)
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, image_inpainted)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )

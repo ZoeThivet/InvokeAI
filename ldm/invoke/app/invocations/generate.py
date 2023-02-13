@@ -7,7 +7,7 @@ from pydantic import Field
 from PIL import Image
 from skimage.exposure.histogram_matching import match_histograms
 from .image import ImageField, ImageOutput
-from .baseinvocation import BaseInvocation
+from .baseinvocation import BaseInvocation, InvocationContext
 from ..services.image_storage import ImageType
 from ..services.invocation_services import InvocationServices
 
@@ -33,26 +33,26 @@ class TextToImageInvocation(BaseInvocation):
     progress_images: bool     = Field(default=False, description="Whether or not to produce progress images during generation")
 
     # TODO: pass this an emitter method or something? or a session for dispatching?
-    def dispatch_progress(self, services: InvocationServices, session_id: str, sample: Any = None, step: int = 0) -> None:
-        services.events.emit_generator_progress(
-            session_id, self.id, step, float(step) / float(self.steps)
+    def dispatch_progress(self, context: InvocationContext, sample: Any = None, step: int = 0) -> None:
+        context.services.events.emit_generator_progress(
+            context.session_id, self.id, step, float(step) / float(self.steps)
         )
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
+    def invoke(self, context: InvocationContext) -> ImageOutput:
 
         def step_callback(sample, step = 0):
-            self.dispatch_progress(services, session_id, sample, step)
+            self.dispatch_progress(context, sample, step)
 
         # Handle invalid model parameter
         # TODO: figure out if this can be done via a validator that uses the model_cache
         # TODO: How to get the default model name now?
         if self.model is None or self.model == '':
-            self.model = services.generate.model_name
+            self.model = context.services.generate.model_name
 
         # Set the model (if already cached, this does nothing)
-        services.generate.set_model(self.model)
+        context.services.generate.set_model(self.model)
 
-        results = services.generate.prompt2image(
+        results = context.services.generate.prompt2image(
             prompt = self.prompt,
             step_callback = step_callback,
             **self.dict(exclude = {'prompt'}) # Shorthand for passing all of the parameters above manually
@@ -62,8 +62,8 @@ class TextToImageInvocation(BaseInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, results[0][0])
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, results[0][0])
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )
@@ -78,23 +78,23 @@ class ImageToImageInvocation(TextToImageInvocation):
     strength: float               = Field(default=0.75, gt=0, le=1, description="The strength of the original image")
     fit: bool                     = Field(default=True, description="Whether or not the result should be fit to the aspect ratio of the input image")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
-        image = None if self.image is None else services.images.get(self.image.image_type, self.image.image_name)
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = None if self.image is None else context.services.images.get(self.image.image_type, self.image.image_name)
         mask  = None
 
         def step_callback(sample, step = 0):
-            self.dispatch_progress(services, session_id, sample, step)
+            self.dispatch_progress(context, sample, step)
 
         # Handle invalid model parameter
         # TODO: figure out if this can be done via a validator that uses the model_cache
         # TODO: How to get the default model name now?
         if self.model is None or self.model == '':
-            self.model = services.generate.model_name
+            self.model = context.services.generate.model_name
 
         # Set the model (if already cached, this does nothing)
-        services.generate.set_model(self.model)
+        context.services.generate.set_model(self.model)
 
-        results = services.generate.prompt2image(
+        results = context.services.generate.prompt2image(
             prompt    = self.prompt,
             init_img  = image,
             init_mask = mask,
@@ -108,8 +108,8 @@ class ImageToImageInvocation(TextToImageInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, result_image)
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, result_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )
@@ -123,23 +123,23 @@ class InpaintInvocation(ImageToImageInvocation):
     mask: Union[ImageField,None]  = Field(description="The mask")
     inpaint_replace: float        = Field(default=0.0, ge=0.0, le=1.0, description="The amount by which to replace masked areas with latent noise")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ImageOutput:
-        image = None if self.image is None else services.images.get(self.image.image_type, self.image.image_name)
-        mask  = None if self.mask is None else services.images.get(self.mask.image_type, self.mask.image_name)
+    def invoke(self, context: InvocationContext) -> ImageOutput:
+        image = None if self.image is None else context.services.images.get(self.image.image_type, self.image.image_name)
+        mask  = None if self.mask is None else context.services.images.get(self.mask.image_type, self.mask.image_name)
 
         def step_callback(sample, step = 0):
-            self.dispatch_progress(services, session_id, sample, step)
+            self.dispatch_progress(context, sample, step)
 
         # Handle invalid model parameter
         # TODO: figure out if this can be done via a validator that uses the model_cache
         # TODO: How to get the default model name now?
         if self.model is None or self.model == '':
-            self.model = services.generate.model_name
+            self.model = context.services.generate.model_name
 
         # Set the model (if already cached, this does nothing)
-        services.generate.set_model(self.model)
+        context.services.generate.set_model(self.model)
 
-        results = services.generate.prompt2image(
+        results = context.services.generate.prompt2image(
             prompt    = self.prompt,
             init_img  = image,
             init_mask = mask,
@@ -153,8 +153,8 @@ class InpaintInvocation(ImageToImageInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
-        services.images.save(image_type, image_name, result_image)
+        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        context.services.images.save(image_type, image_name, result_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
         )

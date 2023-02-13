@@ -7,6 +7,15 @@ from pydantic import BaseModel, Field
 from ..services.invocation_services import InvocationServices
 
 
+class InvocationContext:
+    services: InvocationServices
+    session_id: str
+
+    def __init__(self, services: InvocationServices, session_id: str):
+        self.services = services
+        self.session_id = session_id
+
+
 class BaseInvocationOutput(BaseModel):
     """Base class for all invocation outputs"""
 
@@ -57,10 +66,9 @@ class BaseInvocation(ABC, BaseModel):
     def get_output_type(cls):
         return signature(cls.invoke).return_annotation
 
-    # TODO: should probably just pass a session object around (would need to rename current session to e.g. session)
     @abstractmethod
-    def invoke(self, services: InvocationServices, session_id: str) -> BaseInvocationOutput:
-        """Invoke with provided services and return outputs."""
+    def invoke(self, context: InvocationContext) -> BaseInvocationOutput:
+        """Invoke with provided context and return outputs."""
         pass
 
     id: str = Field(description="The id of this node. Must be unique among all nodes.")

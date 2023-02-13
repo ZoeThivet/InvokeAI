@@ -4,6 +4,8 @@ from queue import Queue
 from threading import Event, Thread
 from typing import Dict, List
 
+from ..invocations.baseinvocation import InvocationContext
+
 from .invocation_graph import InvocationGraph
 from .invocation_session import InvocationSession, InvocationFieldLink
 from .invocation_services import InvocationServices
@@ -67,7 +69,7 @@ class Invoker:
                 )
 
                 # Invoke
-                outputs = invocation.invoke(self.services, session_id = session.id)
+                outputs = invocation.invoke(InvocationContext(services = self.services, session_id = session.id))
 
                 # Save outputs and history
                 session._complete_invocation(invocation, outputs)

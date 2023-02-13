@@ -1,5 +1,5 @@
 from typing import Literal
-from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput
+from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput, InvocationContext
 from ldm.invoke.app.invocations.image import ImageField
 from ldm.invoke.app.services.invocation_services import InvocationServices
 from pydantic import Field
@@ -16,7 +16,7 @@ class ListPassThroughInvocation(BaseInvocation):
 
     collection: list[ImageField] = Field(default_factory=list)
 
-    def invoke(self, services: InvocationServices, session_id: str) -> ListPassThroughInvocationOutput:
+    def invoke(self, context: InvocationContext) -> ListPassThroughInvocationOutput:
         return ListPassThroughInvocationOutput(collection = self.collection)
 
 class PromptTestInvocationOutput(BaseInvocationOutput):
@@ -29,7 +29,7 @@ class PromptTestInvocation(BaseInvocation):
 
     prompt: str = Field(default = "")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> PromptTestInvocationOutput:
+    def invoke(self, context: InvocationContext) -> PromptTestInvocationOutput:
         return PromptTestInvocationOutput(prompt = self.prompt)
 
 class ImageTestInvocationOutput(BaseInvocationOutput):
@@ -42,7 +42,7 @@ class ImageTestInvocation(BaseInvocation):
 
     prompt: str = Field(default = "")
 
-    def invoke(self, services: InvocationServices, session_id: str) -> PromptTestInvocationOutput:
+    def invoke(self, context: InvocationContext) -> PromptTestInvocationOutput:
         return ImageTestInvocationOutput(image=ImageField(image_name=self.id))
 
 class PromptCollectionTestInvocationOutput(BaseInvocationOutput):
@@ -53,5 +53,5 @@ class PromptCollectionTestInvocation(BaseInvocation):
     type: Literal['test_prompt_collection'] = 'test_prompt_collection'
     collection: list[str] = Field()
 
-    def invoke(self, services: InvocationServices, session_id: str) -> PromptCollectionTestInvocationOutput:
+    def invoke(self, context: InvocationContext) -> PromptCollectionTestInvocationOutput:
         return PromptCollectionTestInvocationOutput(collection=self.collection.copy())

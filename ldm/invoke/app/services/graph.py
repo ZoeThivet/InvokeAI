@@ -10,7 +10,7 @@ from pydantic.fields import Field
 from typing import Any, Literal, Optional, Union, get_args, get_origin, get_type_hints, Annotated
 
 from .invocation_services import InvocationServices
-from ..invocations.baseinvocation import BaseInvocation, BaseInvocationOutput
+from ..invocations.baseinvocation import BaseInvocation, BaseInvocationOutput, InvocationContext
 from ..invocations import *
 
 
@@ -108,7 +108,7 @@ class GraphInvocation(BaseInvocation):
     # TODO: figure out how to create a default here
     graph: 'Graph' = Field(description="The graph to run", default=None)
 
-    def invoke(self, services: InvocationServices, session_id: str) -> GraphInvocationOutput:
+    def invoke(self, context: InvocationContext) -> GraphInvocationOutput:
         """Invoke with provided services and return outputs."""
         return GraphInvocationOutput()
 
@@ -127,7 +127,7 @@ class IterateInvocation(BaseInvocation):
     collection: list[Any] = Field(description="The list of items to iterate over", default_factory=list)
     index: int = Field(description="The index, will be provided on executed iterators", default=0)
 
-    def invoke(self, services: InvocationServices, session_id: str) -> IterateInvocationOutput:
+    def invoke(self, context: InvocationContext) -> IterateInvocationOutput:
         """Produces the outputs as values"""
         return IterateInvocationOutput(item = self.collection[self.index])
 
@@ -145,7 +145,7 @@ class CollectInvocation(BaseInvocation):
     item: Any = Field(description="The item to collect (all inputs must be of the same type)", default=None)
     collection: list[Any] = Field(description="The collection, will be provided on execution", default_factory=list)
 
-    def invoke(self, services: InvocationServices, session_id: str) -> CollectInvocationOutput:
+    def invoke(self, context: InvocationContext) -> CollectInvocationOutput:
         """Invoke with provided services and return outputs."""
         return CollectInvocationOutput(collection = copy.copy(self.collection))
 
@@ -536,6 +536,7 @@ class GraphExecutionState(BaseModel):
 
     # Nodes that have been executed
     executed: set[str] = Field(description="The set of node ids that have been executed", default_factory=set)
+    executed_history: list[str] = Field(description="The list of node ids that have been executed, in order of execution", default_factory=list)
 
     # The results of executed nodes
     results: dict[str, Annotated[InvocationOutputsUnion, Field(discriminator="type")]] = Field(description="The results of node executions", default_factory=dict)
@@ -579,6 +580,7 @@ class GraphExecutionState(BaseModel):
 
         # Mark node as executed
         self.executed.add(node_id)
+        self.executed_history.append(node_id)
         self.results[node_id] = output
 
         # Check if source node is complete (all prepared nodes are complete)
@@ -587,6 +589,7 @@ class GraphExecutionState(BaseModel):
 
         if all([n in self.executed for n in prepared_nodes]):
             self.executed.add(source_node)
+            self.executed_history.append(node_id)
 
     def _create_execution_node(self, node_path: str, iteration_node_map: list[tuple[str, str]]) -> list[str]:
         """Prepares an iteration node and connects all edges, returning the new node id"""

@@ -1,5 +1,5 @@
 from .test_nodes import ImageTestInvocation, ListPassThroughInvocation, PromptTestInvocation, PromptCollectionTestInvocation
-from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput
+from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput, InvocationContext
 from ldm.invoke.app.services.invocation_services import InvocationServices
 from ldm.invoke.app.services.graph import Graph, GraphInvocation, InvalidEdgeError, NodeAlreadyInGraphError, NodeNotFoundError, are_connections_compatible, EdgeConnection, CollectInvocation, IterateInvocation, GraphExecutionState
 from ldm.invoke.app.invocations.generate import ImageToImageInvocation, TextToImageInvocation
@@ -30,7 +30,7 @@ def invoke_next(g: GraphExecutionState, services: InvocationServices) -> tuple[B
         return (None, None)
     
     print(f'invoking {n.id}: {type(n)}')
-    o = n.invoke(services, "1")
+    o = n.invoke(InvocationContext(services, "1"))
     g.complete(n.id, o)
 
     return (n, o)
