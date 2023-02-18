@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Callable, Literal
 from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput, InvocationContext
 from ldm.invoke.app.invocations.image import ImageField
 from ldm.invoke.app.services.invocation_services import InvocationServices
@@ -42,7 +42,7 @@ class ImageTestInvocation(BaseInvocation):
 
     prompt: str = Field(default = "")
 
-    def invoke(self, context: InvocationContext) -> PromptTestInvocationOutput:
+    def invoke(self, context: InvocationContext) -> ImageTestInvocationOutput:
         return ImageTestInvocationOutput(image=ImageField(image_name=self.id))
 
 class PromptCollectionTestInvocationOutput(BaseInvocationOutput):
@@ -55,3 +55,38 @@ class PromptCollectionTestInvocation(BaseInvocation):
 
     def invoke(self, context: InvocationContext) -> PromptCollectionTestInvocationOutput:
         return PromptCollectionTestInvocationOutput(collection=self.collection.copy())
+
+
+from ldm.invoke.app.services.events import EventServiceBase
+from ldm.invoke.app.services.graph import EdgeConnection
+
+def create_edge(from_id: str, from_field: str, to_id: str, to_field: str) -> tuple[EdgeConnection, EdgeConnection]:
+    return (EdgeConnection(node_id = from_id, field = from_field), EdgeConnection(node_id = to_id, field = to_field))
+
+
+class TestEvent:
+    event_name: str
+    payload: Any
+
+    def __init__(self, event_name: str, payload: Any):
+        self.event_name = event_name
+        self.payload = payload
+
+class TestEventService(EventServiceBase):
+    events: list
+
+    def __init__(self):
+        super().__init__()
+        self.events = list()
+
+    def dispatch(self, event_name: str, payload: Any) -> None:
+        pass
+
+def wait_until(condition: Callable[[], bool], timeout: int = 10, interval: float = 0.1) -> None:
+    import time
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        if condition():
+            return
+        time.sleep(interval)
+    raise TimeoutError("Condition not met")

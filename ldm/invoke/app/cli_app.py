@@ -9,13 +9,13 @@ from typing import Any, Dict, Literal, Union, get_args, get_origin, get_type_hin
 from pydantic import BaseModel
 from pydantic.fields import Field
 
+from .services.sqlite import SqliteItemStorage
+
 from .invocations.image import ImageField
 from .services.generate_initializer import get_generate
 from .services.image_storage import DiskImageStorage
-from .services.session_manager import DiskSessionManager
 from .services.invocation_queue import MemoryInvocationQueue
 from .invocations.baseinvocation import BaseInvocation
-from .services.invocation_session import InvocationFieldLink
 from .services.invocation_services import InvocationServices
 from .services.invoker import Invoker, InvokerServices
 from .invocations import *
@@ -147,12 +147,15 @@ def invoke_cli():
     services = InvocationServices(
         generate = generate,
         events = events,
-        images          = DiskImageStorage(output_folder)
+        images = DiskImageStorage(output_folder)
     )
+
+    # TODO: build a file/path manager?
+    db_location = os.path.join(output_folder, 'invokeai.db')
 
     invoker_services = InvokerServices(
         queue           = MemoryInvocationQueue(),
-        session_manager = DiskSessionManager(output_folder)
+        graph_execution_manager = SqliteItemStorage[GraphExecutionState](filename = db_location, table_name = 'graph_executions')
     )
 
     invoker = Invoker(services, invoker_services)

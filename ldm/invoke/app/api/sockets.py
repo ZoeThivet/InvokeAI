@@ -23,7 +23,7 @@ class SocketIO:
         await self.__sio.emit(
             event = event[1]['event'],
             data = event[1]['data'],
-            room = event[1]['data']['session_id']
+            room = event[1]['data']['graph_execution_state_id']
         )
 
     async def _handle_sub(self, sid, data, *args, **kwargs):

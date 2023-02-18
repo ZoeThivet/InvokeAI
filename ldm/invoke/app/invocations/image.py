@@ -82,7 +82,7 @@ class CropImageInvocation(BaseInvocation):
         image_crop.paste(image, (-self.x, -self.y))
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, image_crop)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -116,7 +116,7 @@ class PasteImageInvocation(BaseInvocation):
         new_image.paste(image, (max(0, self.x), max(0, self.y)), mask = mask)
 
         image_type = ImageType.RESULT
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, new_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -139,7 +139,7 @@ class MaskFromAlphaInvocation(BaseInvocation):
             image_mask = ImageOps.invert(image_mask)
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, image_mask)
         return MaskOutput(
             mask = ImageField(image_type = image_type, image_name = image_name)
@@ -162,7 +162,7 @@ class BlurInvocation(BaseInvocation):
         blur_image = image.filter(blur)
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, blur_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -187,7 +187,7 @@ class LerpInvocation(BaseInvocation):
         lerp_image = Image.fromarray(numpy.uint8(image_arr))
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, lerp_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -212,7 +212,7 @@ class InverseLerpInvocation(BaseInvocation):
         ilerp_image = Image.fromarray(numpy.uint8(image_arr))
 
         image_type = ImageType.INTERMEDIATE
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, ilerp_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)

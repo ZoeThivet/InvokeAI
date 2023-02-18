@@ -24,7 +24,7 @@ class EventServiceBase:
     # Define events here for every event in the system.
     # This will make them easier to integrate until we find a schema generator.
     def emit_generator_progress(self,
-        session_id: str,
+        graph_execution_state_id: str,
         invocation_id: str,
         step: int,
         percent: float
@@ -33,7 +33,7 @@ class EventServiceBase:
         self.__emit_session_event(
             event_name = 'generator_progress',
             payload = dict(
-                session_id = session_id,
+                graph_execution_state_id = graph_execution_state_id,
                 invocation_id = invocation_id,
                 step = step,
                 percent = percent
@@ -41,7 +41,7 @@ class EventServiceBase:
         )
 
     def emit_invocation_complete(self,
-        session_id: str,
+        graph_execution_state_id: str,
         invocation_id: str,
         result: Dict
     ) -> None:
@@ -49,30 +49,30 @@ class EventServiceBase:
         self.__emit_session_event(
             event_name = 'invocation_complete',
             payload = dict(
-                session_id = session_id,
+                graph_execution_state_id = graph_execution_state_id,
                 invocation_id = invocation_id,
                 result = result
             )
         )
 
     def emit_invocation_started(self,
-        session_id: str,
+        graph_execution_state_id: str,
         invocation_id: str
     ) -> None:
         """Emitted when an invocation has started"""
         self.__emit_session_event(
             event_name = 'invocation_started',
             payload = dict(
-                session_id = session_id,
+                graph_execution_state_id = graph_execution_state_id,
                 invocation_id = invocation_id
             )
         )
 
-    def emit_session_invocation_complete(self, session_id: str) -> None:
+    def emit_graph_execution_complete(self, graph_execution_state_id: str) -> None:
         """Emitted when a session has completed all invocations"""
         self.__emit_session_event(
-            event_name = 'session_complete',
+            event_name = 'graph_execution_state_complete',
             payload = dict(
-                session_id = session_id
+                graph_execution_state_id = graph_execution_state_id
             )
         )

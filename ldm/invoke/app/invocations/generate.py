@@ -35,7 +35,7 @@ class TextToImageInvocation(BaseInvocation):
     # TODO: pass this an emitter method or something? or a session for dispatching?
     def dispatch_progress(self, context: InvocationContext, sample: Any = None, step: int = 0) -> None:
         context.services.events.emit_generator_progress(
-            context.session_id, self.id, step, float(step) / float(self.steps)
+            context.graph_execution_state_id, self.id, step, float(step) / float(self.steps)
         )
 
     def invoke(self, context: InvocationContext) -> ImageOutput:
@@ -62,7 +62,7 @@ class TextToImageInvocation(BaseInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, results[0][0])
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -108,7 +108,7 @@ class ImageToImageInvocation(TextToImageInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, result_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)
@@ -153,7 +153,7 @@ class InpaintInvocation(ImageToImageInvocation):
         # TODO: pre-seed?
         # TODO: can this return multiple results? Should it?
         image_type = ImageType.RESULT
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, result_image)
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)

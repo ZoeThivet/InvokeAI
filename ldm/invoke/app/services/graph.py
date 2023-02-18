@@ -5,7 +5,7 @@ import itertools
 from types import NoneType
 import uuid
 import networkx as nx
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from pydantic.fields import Field
 from typing import Any, Literal, Optional, Union, get_args, get_origin, get_type_hints, Annotated
 
@@ -95,6 +95,9 @@ class InvalidEdgeError(Exception):
 class NodeNotFoundError(Exception):
     pass
 
+class NodeAlreadyExecutedError(Exception):
+    pass
+
 
 # TODO: Create and use an Empty output?
 class GraphInvocationOutput(BaseInvocationOutput):
@@ -156,8 +159,9 @@ InvocationOutputsUnion = Union[BaseInvocationOutput.get_all_subclasses_tuple()]
 
 class Graph(BaseModel):
     id: str = Field(description="The id of this graph", default_factory=uuid.uuid4)
+    # TODO: use a list (and never use dict in a BaseModel) because pydantic/fastapi hates me
     nodes: dict[str, Annotated[InvocationsUnion, Field(discriminator="type")]] = Field(description="The nodes in this graph", default_factory=dict)
-    edges: set[tuple[EdgeConnection,EdgeConnection]] = Field(description="The connections between nodes and their fields in this graph", default_factory=set)
+    edges: list[tuple[EdgeConnection,EdgeConnection]] = Field(description="The connections between nodes and their fields in this graph", default_factory=list)
 
     def add_node(self, node: BaseInvocation) -> None:
         """Adds a node to a graph
@@ -218,8 +222,8 @@ class Graph(BaseModel):
         :raises InvalidEdgeError: the provided edge is invalid.
         """
 
-        if self._is_edge_valid(edge):
-            self.edges.add(edge)
+        if self._is_edge_valid(edge) and edge not in self.edges:
+            self.edges.append(edge)
         else:
             raise InvalidEdgeError()
     
@@ -339,7 +343,7 @@ class Graph(BaseModel):
         return node_id if prefix is None or prefix == '' else f'{prefix}.{node_id}'
 
 
-    def update_node(self, node_path: str, new_node: InvocationsUnion) -> None:
+    def update_node(self, node_path: str, new_node: BaseInvocation) -> None:
         """Updates a node in the graph."""
         graph, node_id = self._get_graph_and_node(node_path)
         node = graph.nodes[node_id]
@@ -580,7 +584,6 @@ class GraphExecutionState(BaseModel):
 
         # Mark node as executed
         self.executed.add(node_id)
-        self.executed_history.append(node_id)
         self.results[node_id] = output
 
         # Check if source node is complete (all prepared nodes are complete)
@@ -589,7 +592,11 @@ class GraphExecutionState(BaseModel):
 
         if all([n in self.executed for n in prepared_nodes]):
             self.executed.add(source_node)
-            self.executed_history.append(node_id)
+            self.executed_history.append(source_node)
+
+    def is_complete(self) -> bool:
+        """Returns true if the graph is complete"""
+        return all((k in self.executed for k in self.graph.nodes))
 
     def _create_execution_node(self, node_path: str, iteration_node_map: list[tuple[str, str]]) -> list[str]:
         """Prepares an iteration node and connects all edges, returning the new node id"""
@@ -740,8 +747,6 @@ class GraphExecutionState(BaseModel):
 
     def _prepare_inputs(self, node: BaseInvocation):
         input_edges = [e for e in self.execution_graph.edges if e[1].node_id == node.id]
-        print(f'{len(input_edges)} input edges')
-        print(f'{len(self.execution_graph.edges)} all edges')
         if isinstance(node, CollectInvocation):
             output_collection = [getattr(self.results[edge[0].node_id], edge[0].field) for edge in input_edges if edge[1].field == 'item']
             setattr(node, 'collection', output_collection)
@@ -765,3 +770,28 @@ class GraphExecutionState(BaseModel):
     def _is_node_updatable(self, node_id: str) -> bool:
         # The node is updatable as long as it hasn't been prepared or executed
         return node_id not in self.source_prepared_mapping
+
+    def add_node(self, node: BaseInvocation) -> None:
+        self.graph.add_node(node)
+    
+    def update_node(self, node_path: str, new_node: BaseInvocation) -> None:
+        if not self._is_node_updatable(node_path):
+            raise NodeAlreadyExecutedError(f'Node {node_path} has already been prepared or executed and cannot be updated')
+        self.graph.update_node(node_path, new_node)
+
+    def delete_node(self, node_path: str) -> None:
+        if not self._is_node_updatable(node_path):
+            raise NodeAlreadyExecutedError(f'Node {node_path} has already been prepared or executed and cannot be deleted')
+        self.graph.delete_node(node_path)
+
+    def add_edge(self, edge: tuple[EdgeConnection, EdgeConnection]) -> None:
+        if not self._is_node_updatable(edge[1].node_id):
+            raise NodeAlreadyExecutedError(f'Destination node {edge[1].node_id} has already been prepared or executed and cannot be linked to')
+        self.graph.add_edge(edge)
+    
+    def delete_edge(self, edge: tuple[EdgeConnection, EdgeConnection]) -> None:
+        if not self._is_node_updatable(edge[1].node_id):
+            raise NodeAlreadyExecutedError(f'Destination node {edge[1].node_id} has already been prepared or executed and cannot have a source edge deleted')
+        self.graph.delete_edge(edge)
+
+GraphInvocation.update_forward_refs()

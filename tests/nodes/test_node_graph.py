@@ -1,3 +1,5 @@
+from ldm.invoke.app.invocations.image import *
+
 from .test_nodes import ListPassThroughInvocation, PromptTestInvocation
 from ldm.invoke.app.services.graph import Graph, GraphInvocation, InvalidEdgeError, NodeAlreadyInGraphError, NodeNotFoundError, are_connections_compatible, EdgeConnection, CollectInvocation, IterateInvocation
 from ldm.invoke.app.invocations.generate import ImageToImageInvocation, TextToImageInvocation
@@ -10,7 +12,6 @@ def create_edge(from_id: str, from_field: str, to_id: str, to_field: str) -> tup
     return (EdgeConnection(node_id = from_id, field = from_field), EdgeConnection(node_id = to_id, field = to_field))
 
 # Tests
-
 def test_connections_are_compatible():
     from_node = TextToImageInvocation(id = "1", prompt = "Banana sushi")
     from_field = "image"
@@ -352,7 +353,7 @@ def test_graph_invalid_if_edges_reference_missing_nodes():
     n1 = TextToImageInvocation(id = "1", prompt = "Banana sushi")
     g.nodes[n1.id] = n1
     e1 = create_edge("1","image","2","image")
-    g.edges.add(e1)
+    g.edges.append(e1)
 
     assert g.is_valid() == False
 
@@ -364,7 +365,7 @@ def test_graph_invalid_if_subgraph_invalid():
     n1_1 = TextToImageInvocation(id = "2", prompt = "Banana sushi")
     n1.graph.nodes[n1_1.id] = n1_1
     e1 = create_edge("1","image","2","image")
-    n1.graph.edges.add(e1)
+    n1.graph.edges.append(e1)
 
     g.nodes[n1.id] = n1
 
@@ -378,8 +379,8 @@ def test_graph_invalid_if_has_cycle():
     g.nodes[n2.id] = n2
     e1 = create_edge("1","image","2","image")
     e2 = create_edge("2","image","1","image")
-    g.edges.add(e1)
-    g.edges.add(e2)
+    g.edges.append(e1)
+    g.edges.append(e2)
 
     assert g.is_valid() == False
 
@@ -390,7 +391,7 @@ def test_graph_invalid_with_invalid_connection():
     g.nodes[n1.id] = n1
     g.nodes[n2.id] = n2
     e1 = create_edge("1","image","2","strength")
-    g.edges.add(e1)
+    g.edges.append(e1)
 
     assert g.is_valid() == False
 
@@ -461,3 +462,40 @@ def test_graph_gets_networkx_graph():
 
 
 # TODO: Graph serializes and deserializes
+def test_graph_can_serialize():
+    g = Graph()
+    n1 = TextToImageInvocation(id = "1", prompt = "Banana sushi")
+    n2 = UpscaleInvocation(id = "2")
+    g.add_node(n1)
+    g.add_node(n2)
+    e = create_edge(n1.id,"image",n2.id,"image")
+    g.add_edge(e)
+
+    # Not throwing on this line is sufficient
+    json = g.json()
+
+def test_graph_can_deserialize():
+    g = Graph()
+    n1 = TextToImageInvocation(id = "1", prompt = "Banana sushi")
+    n2 = UpscaleInvocation(id = "2")
+    g.add_node(n1)
+    g.add_node(n2)
+    e = create_edge(n1.id,"image",n2.id,"image")
+    g.add_edge(e)
+
+    json = g.json()
+    g2 = Graph.parse_raw(json)
+
+    assert g2 is not None
+    assert g2.nodes['1'] is not None
+    assert g2.nodes['2'] is not None
+    assert len(g2.edges) == 1
+    assert g2.edges[0][0].node_id == '1'
+    assert g2.edges[0][0].field == 'image'
+    assert g2.edges[0][1].node_id == '2'
+    assert g2.edges[0][1].field == 'image'
+
+def test_graph_can_generate_schema():
+    # Not throwing on this line is sufficient
+    # NOTE: if this test fails, it's PROBABLY because a new invocation type is breaking schema generation
+    schema = Graph.schema_json(indent = 2)

@@ -1,3 +1,4 @@
+from .test_invoker import create_edge
 from .test_nodes import ImageTestInvocation, ListPassThroughInvocation, PromptTestInvocation, PromptCollectionTestInvocation
 from ldm.invoke.app.invocations.baseinvocation import BaseInvocation, BaseInvocationOutput, InvocationContext
 from ldm.invoke.app.services.invocation_services import InvocationServices
@@ -6,10 +7,6 @@ from ldm.invoke.app.invocations.generate import ImageToImageInvocation, TextToIm
 from ldm.invoke.app.invocations.upscale import UpscaleInvocation
 import pytest
 
-
-# Helpers
-def create_edge(from_id: str, from_field: str, to_id: str, to_field: str) -> tuple[EdgeConnection, EdgeConnection]:
-    return (EdgeConnection(node_id = from_id, field = from_field), EdgeConnection(node_id = to_id, field = to_field))
 
 @pytest.fixture
 def simple_graph():
@@ -47,6 +44,23 @@ def test_graph_state_executes_in_order(simple_graph, mock_services):
     assert n3 is None
     assert g.results[n1[0].id].prompt == n1[0].prompt
     assert n2[0].prompt == n1[0].prompt
+
+def test_graph_is_complete(simple_graph, mock_services):
+    g = GraphExecutionState(graph = simple_graph)
+    n1 = invoke_next(g, mock_services)
+    n2 = invoke_next(g, mock_services)
+    n3 = g.next()
+
+    assert g.is_complete()
+
+def test_graph_is_not_complete(simple_graph, mock_services):
+    g = GraphExecutionState(graph = simple_graph)
+    n1 = invoke_next(g, mock_services)
+    n2 = g.next()
+
+    assert not g.is_complete()
+
+# TODO: test completion with iterators/subgraphs
 
 def test_graph_state_expands_iterator(mock_services):
     graph = Graph()

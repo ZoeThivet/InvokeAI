@@ -29,7 +29,7 @@ class RestoreFaceInvocation(BaseInvocation):
         # Results are image and seed, unwrap for now
         # TODO: can this return multiple results?
         image_type = ImageType.RESULT
-        image_name = f'{context.session_id}_{self.id}_{str(int(datetime.now(timezone.utc).timestamp()))}.png'
+        image_name = context.services.images.create_name(context.graph_execution_state_id, self.id)
         context.services.images.save(image_type, image_name, results[0][0])
         return ImageOutput(
             image = ImageField(image_type = image_type, image_name = image_name)

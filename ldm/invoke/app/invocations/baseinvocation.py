@@ -9,11 +9,11 @@ from ..services.invocation_services import InvocationServices
 
 class InvocationContext:
     services: InvocationServices
-    session_id: str
+    graph_execution_state_id: str
 
-    def __init__(self, services: InvocationServices, session_id: str):
+    def __init__(self, services: InvocationServices, graph_execution_state_id: str):
         self.services = services
-        self.session_id = session_id
+        self.graph_execution_state_id = graph_execution_state_id
 
 
 class BaseInvocationOutput(BaseModel):

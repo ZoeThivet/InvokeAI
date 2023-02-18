@@ -1,8 +1,8 @@
 # Copyright (c) 2022 Kyle Schouviller (https://github.com/kyle0654)
 
 from abc import ABC, abstractmethod
-from calendar import c
 from enum import Enum
+import datetime
 import os
 from pathlib import Path
 from queue import Queue
@@ -36,6 +36,9 @@ class ImageStorageBase(ABC):
     @abstractmethod
     def delete(self, image_type: ImageType, image_name: str) -> None:
         pass
+
+    def create_name(self, context_id: str, node_id: str) -> str:
+        return f'{context_id}_{node_id}_{str(int(datetime.datetime.now(datetime.timezone.utc).timestamp()))}.png'
 
 
 class DiskImageStorage(ImageStorageBase):

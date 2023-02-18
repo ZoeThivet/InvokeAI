@@ -107,9 +107,16 @@
             var id = 1;
             var initialNode = {"id": id.toString(), "type": "txt2img", "prompt": prompt, "sampler": sampler, "steps": steps, "seed": seed};
             id++;
+            var upscaleNode = {"id": id.toString(), "type": "show_image" };
+            id++
 
-            nodes = [initialNode];
-            links = [];
+            nodes = {};
+            nodes[initialNode.id] = initialNode;
+            nodes[upscaleNode.id] = upscaleNode;
+            links = [
+                [{ "node_id": initialNode.id, field: "image" },
+                 { "node_id": upscaleNode.id, field: "image" }]
+            ];
             // expandSize = 128;
             // for (var i = 0; i < 6; ++i) {
             //     var i_seed = (seed == -1) ? -1 : seed + i + 1;
@@ -157,7 +164,7 @@
 
             var graph = {
                 "nodes": nodes,
-                "links": links
+                "edges": links
             };
 
             // var defaultGraph = {"nodes": [

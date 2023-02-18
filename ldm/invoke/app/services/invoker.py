@@ -1,27 +1,24 @@
 # Copyright (c) 2022 Kyle Schouviller (https://github.com/kyle0654)
 
-from queue import Queue
 from threading import Event, Thread
-from typing import Dict, List
-
+from .graph import Graph, GraphExecutionState
+from .item_storage import ItemStorageABC
 from ..invocations.baseinvocation import InvocationContext
-
-from .invocation_graph import InvocationGraph
-from .invocation_session import InvocationSession, InvocationFieldLink
 from .invocation_services import InvocationServices
 from .invocation_queue import InvocationQueueABC, InvocationQueueItem
-from .session_manager import SessionManagerABC
 
 
 class InvokerServices:
+    """Services used by the Invoker for execution"""
+    
     queue: InvocationQueueABC
-    session_manager: SessionManagerABC
+    graph_execution_manager: ItemStorageABC[GraphExecutionState]
 
     def __init__(self,
         queue: InvocationQueueABC,
-        session_manager: SessionManagerABC):
+        graph_execution_manager: ItemStorageABC[GraphExecutionState]):
         self.queue           = queue
-        self.session_manager = session_manager
+        self.graph_execution_manager = graph_execution_manager
 
 
 class Invoker:
@@ -45,6 +42,7 @@ class Invoker:
             target = self.__process,
             kwargs = dict(stop_event = self.__stop_event)
         )
+        self.__invoker_thread.daemon = True # TODO: probably better to just not use threads?
         self.__invoker_thread.start()
 
 
@@ -60,90 +58,74 @@ class Invoker:
                 if not queue_item: # Probably stopping
                     continue
 
-                session = self.invoker_services.session_manager.get(queue_item.session_id)
-                invocation = session.invocations[queue_item.invocation_id]
+                graph_execution_state = self.invoker_services.graph_execution_manager.get(queue_item.graph_execution_state_id)
+                invocation = graph_execution_state.execution_graph.get_node(queue_item.invocation_id)
 
                 # Send starting event
                 self.services.events.emit_invocation_started(
-                    session.id, invocation.id
+                    graph_execution_state_id = graph_execution_state.id,
+                    invocation_id = invocation.id
                 )
 
                 # Invoke
-                outputs = invocation.invoke(InvocationContext(services = self.services, session_id = session.id))
+                outputs = invocation.invoke(InvocationContext(
+                    services = self.services,
+                    graph_execution_state_id = graph_execution_state.id
+                ))
 
                 # Save outputs and history
-                session._complete_invocation(invocation, outputs)
+                graph_execution_state.complete(invocation.id, outputs)
 
-                # Save the session changes
-                self.invoker_services.session_manager.set(session)
+                # Save the state changes
+                self.invoker_services.graph_execution_manager.set(graph_execution_state)
 
                 # Send complete event
                 self.services.events.emit_invocation_complete(
-                    session.id, invocation.id, outputs.dict()
+                    graph_execution_state_id = graph_execution_state.id,
+                    invocation_id = invocation.id,
+                    result = outputs.dict()
                 )
 
                 # Queue any further commands if invoking all
-                if queue_item.invoke_all and session.ready_to_invoke():
-                    self.invoke(session, invoke_all = True)
-                elif not session.ready_to_invoke():
-                    self.services.events.emit_session_invocation_complete(session.id)
+                is_complete = graph_execution_state.is_complete()
+                if queue_item.invoke_all and not is_complete:
+                    self.invoke(graph_execution_state, invoke_all = True)
+                elif is_complete:
+                    self.services.events.emit_graph_execution_complete(graph_execution_state.id)
 
         except KeyboardInterrupt:
             ... # Log something?
 
 
-    def invoke(self, session: InvocationSession, invoke_all: bool = False) -> str:
-        """Determines the next node to invoke and returns the id of the invoked node"""
+    def invoke(self, graph_execution_state: GraphExecutionState, invoke_all: bool = False) -> str|None:
+        """Determines the next node to invoke and returns the id of the invoked node, or None if there are no nodes to execute"""
         self.__ensure_alive()
 
-        invocation_id = session._get_next_invocation_id()
-        if not invocation_id:
-            return # TODO: raise an error?
+        # Get the next invocation
+        invocation = graph_execution_state.next()
+        if not invocation:
+            return None
 
-        # Save session in case user changed it
-        self.invoker_services.session_manager.set(session)
-
-        # Get updated input values
-        # TODO: consider using a copy to keep history separate from input configuration
-        session._map_inputs(invocation_id)
-        invocation = session.invocations[invocation_id]
+        # Save the execution state
+        self.invoker_services.graph_execution_manager.set(graph_execution_state)
 
         # Queue the invocation
+        print(f'queueing item {invocation.id}')
         self.invoker_services.queue.put(InvocationQueueItem(
-            session_id    = session.id,
+            #session_id    = session.id,
+            graph_execution_state_id = graph_execution_state.id,
             invocation_id = invocation.id,
             invoke_all    = invoke_all
         ))
 
-        # Return the id of the invocation
         return invocation.id
 
 
-    def create_session(self) -> InvocationSession:
+    def create_execution_state(self, graph: Graph|None = None) -> GraphExecutionState:
         self.__ensure_alive()
-        return self.invoker_services.session_manager.create()
-
-
-    def create_session_from_graph(self, invocation_graph: InvocationGraph) -> InvocationSession:
-        self.__ensure_alive()
-
-        # Create a new session
-        session = self.create_session()
-
-        # Directly create nodes and links, since graph is already validated
-        for node in invocation_graph.nodes:
-            session.invocations[node.id] = node
-        
-        for link in invocation_graph.links:
-            if not link.to_node.id in session.links:
-                session.links[link.to_node.id] = list()
-            
-            session.links[link.to_node.id].append(InvocationFieldLink(
-                from_node_id = link.from_node.id,
-                from_field   = link.from_node.field,
-                to_field     = link.to_node.field))
-
-        return session
+        new_state = GraphExecutionState(graph = Graph() if graph is None else graph)
+        self.invoker_services.graph_execution_manager.set(new_state)
+        return new_state
 
 
     def __stop_service(self, service) -> None:

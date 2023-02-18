@@ -2,15 +2,13 @@
 
 from argparse import Namespace
 import os
-import sys
-import traceback
 
-import ldm.invoke
+from ..services.graph import GraphExecutionState
+from ..services.sqlite import SqliteItemStorage
 
 from ...globals import Globals
 
 from ..services.image_storage import DiskImageStorage
-from ..services.session_manager import DiskSessionManager
 from ..services.invocation_queue import MemoryInvocationQueue
 from ..services.invocation_services import InvocationServices
 from ..services.invoker import Invoker, InvokerServices
@@ -65,10 +63,13 @@ class ApiDependencies:
             events   = events,
             images   = images
         )
+            
+        # TODO: build a file/path manager?
+        db_location = os.path.join(output_folder, 'invokeai.db')
 
         invoker_services = InvokerServices(
             queue = MemoryInvocationQueue(),
-            session_manager = DiskSessionManager(output_folder)
+            graph_execution_manager = SqliteItemStorage[GraphExecutionState](filename = db_location, table_name = 'graph_executions')
         )
 
         ApiDependencies.invoker = Invoker(services, invoker_services)
