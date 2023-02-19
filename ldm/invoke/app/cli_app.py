@@ -3,11 +3,12 @@
 import argparse
 import shlex
 import os
-import sys
-import traceback
-from typing import Any, Dict, Literal, Union, get_args, get_origin, get_type_hints
+import time
+from typing import Any, Dict, Iterable, Literal, Union, get_args, get_origin, get_type_hints
 from pydantic import BaseModel
 from pydantic.fields import Field
+
+from .services.graph import EdgeConnection, GraphExecutionState
 
 from .services.sqlite import SqliteItemStorage
 
@@ -20,11 +21,10 @@ from .services.invocation_services import InvocationServices
 from .services.invoker import Invoker, InvokerServices
 from .invocations import *
 from ..args import Args
-from ...generate import Generate
 from .services.events import EventServiceBase
 
 
-class Command(BaseModel):
+class InvocationCommand(BaseModel):
     invocation: Union[BaseInvocation.get_invocations()] = Field(discriminator="type")
 
 
@@ -130,6 +130,31 @@ def get_invocation_command(invocation) -> str:
     return ' '.join(command)
 
 
+def get_graph_execution_history(graph_execution_state: GraphExecutionState) -> Iterable[str]:
+    """Gets the history of fully-executed invocations for a graph execution"""
+    return (n for n in reversed(graph_execution_state.executed_history) if n in graph_execution_state.graph.nodes)
+
+
+def generate_matching_edges(a: BaseInvocation, b: BaseInvocation) -> list[tuple[EdgeConnection, EdgeConnection]]:
+    """Generates all possible edges between two invocations"""
+    atype = type(a)
+    btype = type(b)
+
+    aoutputtype = atype.get_output_type()
+
+    afields = get_type_hints(aoutputtype)
+    bfields = get_type_hints(btype)
+
+    matching_fields = set(afields.keys()).intersection(bfields.keys())
+    
+    # Remove invalid fields
+    invalid_fields = set(['type', 'id'])
+    matching_fields = matching_fields.difference(invalid_fields)
+
+    edges = [(EdgeConnection(node_id = a.id, field = field), EdgeConnection(node_id = b.id, field = field)) for field in matching_fields]
+    return edges
+
+
 def invoke_cli():
     args = Args()
     config = args.parse_args()
@@ -159,7 +184,7 @@ def invoke_cli():
     )
 
     invoker = Invoker(services, invoker_services)
-    session = invoker.create_session()
+    session = invoker.create_execution_state()
     
     parser = get_invocation_parser()
 
@@ -184,9 +209,13 @@ def invoke_cli():
             continue
 
         try:
+            # Refresh the state of the session
+            session = invoker.invoker_services.graph_execution_manager.get(session.id)
+            history = list(get_graph_execution_history(session))
+
             # Split the command for piping
             cmds = cmd_input.split('|')
-            start_id = len(session.history)
+            start_id = len(history)
             current_id = start_id
             new_invocations = list()
             for cmd in cmds:
@@ -196,12 +225,10 @@ def invoke_cli():
                 # Check for special commands
                 if args['type'] == 'history':
                     history_count = args['count'] or 5
-                    for i in range(min(history_count, len(session.history))):
-                        entry_id = session.history[-1 - i]
-                        entry = session.invocation_results[entry_id]
-                        output_names = set(entry.outputs.__fields__.keys()).difference(set(['type']))
-                        outputs = ', '.join(output_names)
-                        print(f'{entry_id}: {get_invocation_command(entry.invocation)} => {outputs}')
+                    for i in range(min(history_count, len(history))):
+                        entry_id = history[-1 - i]
+                        entry = session.graph.get_node(entry_id)
+                        print(f'{entry_id}: {get_invocation_command(entry.invocation)}')
                     continue
 
                 if args['type'] == 'reset_default':
@@ -222,46 +249,44 @@ def invoke_cli():
 
                 # Parse invocation
                 args['id'] = current_id
-                command = Command(invocation = args)
+                command = InvocationCommand(invocation = args)
 
                 # Pipe previous command output (if there was a previous command)
-                links = []
-                if len(session.history) > 0 or current_id != start_id:
-                    from_id = -1 if current_id == start_id else str(current_id - 1)
-                    links.append(InvocationFieldLink(
-                        from_node_id=from_id,
-                        from_field = "*",
-                        to_field = "*"))
+                edges = []
+                if len(history) > 0 or current_id != start_id:
+                    from_id = history[0] if current_id == start_id else str(current_id - 1)
+                    from_node = next(filter(lambda n: n[0].id == from_id, new_invocations))[0] if current_id != start_id else session.graph.get_node(from_id)
+                    matching_edges = generate_matching_edges(from_node, command.invocation)
+                    edges.extend(matching_edges)
                 
                 # Parse provided links
                 if 'link_node' in args and args['link_node']:
                     for link in args['link_node']:
-                        links.append(InvocationFieldLink(
-                            from_node_id = link,
-                            from_field = "*",
-                            to_field = "*"
-                        ))
+                        link_node = session.graph.get_node(link)
+                        matching_edges = generate_matching_edges(link_node, command.invocation)
+                        edges.extend(matching_edges)
                 
                 if 'link' in args and args['link']:
                     for link in args['link']:
-                        links.append(InvocationFieldLink(
-                            from_field = link[0],
-                            from_node_id = link[1],
-                            to_field = link[2]
-                        ))
+                        edges.append((EdgeConnection(node_id = link[1], field = link[0]), EdgeConnection(node_id = command.invocation.id, field = link[2])))
 
-                new_invocations.append((command.invocation, links))
+                new_invocations.append((command.invocation, edges))
 
                 current_id = current_id + 1
 
             # Command line was parsed successfully
             # Add the invocations to the session
             for invocation in new_invocations:
-                session.add_invocation(invocation[0], invocation[1])
+                session.add_node(invocation[0])
+                for edge in invocation[1]:
+                    session.add_edge(edge)
 
             # Execute all available invocations
             invoker.invoke(session, invoke_all = True)
-            session.wait_for_all()
+            while not session.is_complete():
+                # Wait some time
+                session = invoker.invoker_services.graph_execution_manager.get(session.id)
+                time.sleep(0.1)
 
         except InvalidArgs:
             print('Invalid command, use "help" to list commands')

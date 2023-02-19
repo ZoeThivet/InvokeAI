@@ -40,9 +40,7 @@ class MemoryInvocationQueue(InvocationQueueABC):
         self.__queue = Queue()
     
     def get(self) -> InvocationQueueItem:
-        print('getting item from queue')
         return self.__queue.get()
     
     def put(self, item: InvocationQueueItem|None) -> None:
-        print(f'queued item {item}')
         self.__queue.put(item)
