@@ -223,6 +223,7 @@ def invoke_cli():
                 args = vars(parser.parse_args(shlex.split(cmd.strip())))
 
                 # Check for special commands
+                # TODO: These might be better as Pydantic models, similar to the invocations
                 if args['type'] == 'history':
                     history_count = args['count'] or 5
                     for i in range(min(history_count, len(history))):
